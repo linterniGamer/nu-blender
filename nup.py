@@ -31,17 +31,17 @@ def import_nup(context, operator: bpy.types.Operator):
         case _:
             platform = None
 
+    # Load scene files, including scene definition, lights, and configuration.
+    with open(operator.filepath, "rb") as file:
+        data = file.read()
+        nup = Nup(data, platform)
+        
     # Warn if platform doesn't match.
     if nup.platform != platform:
         operator.report(
             {"WARNING"},
             f"Warning: Detected platform {nup.platform} does not match expected platform {platform} based on file extension.",
         )
-
-    # Load scene files, including scene definition, lights, and configuration.
-    with open(operator.filepath, "rb") as file:
-        data = file.read()
-        nup = Nup(data, platform)
 
     bpy.ops.scene.new()
 
