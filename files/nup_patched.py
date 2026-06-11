@@ -73,11 +73,6 @@ class Nup:
                 "Mixed texture types found; cannot determine platform."
             )
 
-        # Prefer the platform requested by the importer/file extension.
-        # Some Xbox .nux files contain texture headers that can be mis-detected
-        # as PC, but their scene instance table is still Xbox-sized (0x54 bytes).
-        scene_platform = platform or self.platform
-
         # Load materials.
         materials_count = read_i32(body, header.materials_offset)
 
@@ -85,7 +80,7 @@ class Nup:
         for i in range(materials_count):
             material_offset = read_u32(body, header.materials_offset + 0x04 + i * 0x04)
 
-            self.materials.append(NuMaterial(body, material_offset, scene_platform))
+            self.materials.append(NuMaterial(body, material_offset, self.platform or platform))
 
         # Load vertex data.
         vertex_bufs_count = read_i32(body, header.vertex_data_offset)
@@ -95,7 +90,7 @@ class Nup:
             for i in range(vertex_bufs_count)
         ]
 
-        self.scene = NuScene(body, header.scene_offset, header, vertex_bufs, scene_platform)
+        self.scene = NuScene(body, header.scene_offset, header, vertex_bufs, self.platform or platform)
 
 
 class NupHeader:
@@ -164,38 +159,12 @@ class NuScene:
 
         instances_count = read_i32(data, offset + 0x18)
 
-        # Xbox .nux is not uniform: some files use 0x50-byte instances and
-        # others use 0x54-byte instances. The original importer worked for
-        # 0x50, so prefer that layout first. If an impossible animation
-        # pointer / bad read appears, retry the whole instance table as 0x54.
-        #
-        # Note: in the 0x50 variant, the next 4 bytes can be level creation
-        # metadata/size info and must be ignored. Treating it as part of the
-        # instance is what desynchronizes some files.
-        def _read_instances_with_stride(instance_size):
-            instances = []
-            end = header.instances_offset + instances_count * instance_size
-            if instances_count < 0 or end > len(data):
-                raise ValueError(f"Invalid instance table for stride 0x{instance_size:X}")
+        self.instances = []
+        for i in range(instances_count):
+            instance_size = NuInstance.SIZE_XBOX if platform == NuPlatform.XBOX else NuInstance.SIZE
+            instances_offset_i = header.instances_offset + i * instance_size
 
-            for j in range(instances_count):
-                inst_off = header.instances_offset + j * instance_size
-                inst = NuInstance(data, inst_off, strict=True)
-
-                # If the layout is wrong, object index / anim pointer often
-                # becomes matrix float data such as 0x3F800000. Force fallback.
-                if not (-1 <= inst.obj_idx < objects_count):
-                    raise ValueError(f"Invalid obj_idx {inst.obj_idx} for stride 0x{instance_size:X}")
-
-                instances.append(inst)
-            return instances
-
-        try:
-            self.instances = _read_instances_with_stride(NuInstance.SIZE)
-            self.instance_size = NuInstance.SIZE
-        except Exception:
-            self.instances = _read_instances_with_stride(NuInstance.SIZE_XBOX)
-            self.instance_size = NuInstance.SIZE_XBOX
+            self.instances.append(NuInstance(data, instances_offset_i))
 
         splines_count = read_i32(data, offset + 0x28)
         splines_offset = read_u32(data, offset + 0x2C)
@@ -236,8 +205,7 @@ class NuInstance:
 
     anim = None
 
-    def __init__(self, data, offset, strict=False):
-        self.anim = None
+    def __init__(self, data, offset):
         self.transform = NuMtx(data, offset)
         self.obj_idx = read_i16(data, offset + 0x40)
 
@@ -247,10 +215,7 @@ class NuInstance:
 
         anim_offset = read_u32(data, offset + 0x48)
         if anim_offset != 0:
-            if anim_offset < len(data) - NuInstAnim.SIZE:
-                self.anim = NuInstAnim(data, anim_offset)
-            elif strict:
-                raise ValueError(f"Invalid instance animation offset 0x{anim_offset:X}")
+            self.anim = NuInstAnim(data, anim_offset)
 
 
 class NuInstAnim:
