@@ -193,9 +193,9 @@ class NuScene:
         try:
             self.instances = _read_instances_with_stride(NuInstance.SIZE)
             self.instance_size = NuInstance.SIZE
-        except Exception:
-            self.instances = _read_instances_with_stride(NuInstance.SIZE_XBOX)
-            self.instance_size = NuInstance.SIZE_XBOX
+        except ValueError:
+            self.instances = _read_instances_with_stride(NuInstance.SIZE_ALTERNATE)
+            self.instance_size = NuInstance.SIZE_ALTERNATE
 
         splines_count = read_i32(data, offset + 0x28)
         splines_offset = read_u32(data, offset + 0x2C)
@@ -232,7 +232,7 @@ class NuObject:
 
 class NuInstance:
     SIZE = 0x50
-    SIZE_XBOX = 0x54
+    SIZE_ALTERNATE = 0x54
 
     anim = None
 
